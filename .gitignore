@@ -1,16 +1,22 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+
+# Virtual environment
 venv/
 .env
 *.env
-*.log
 
-# VS Code
+# VS Code settings
 .vscode/
 
-# OS
+# Logs
+*.log
+
+# OS files
 .DS_Store
 Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
