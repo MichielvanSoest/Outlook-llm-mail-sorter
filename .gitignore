@@ -23,3 +23,7 @@ Thumbs.db
 
 # Secrets
 secrets.py
+
+# Logs
+*.log
+mail_sorting_log.txt
