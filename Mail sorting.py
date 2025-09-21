@@ -3,15 +3,7 @@ import requests
 import unicodedata
 from tqdm import tqdm
 import time
-
-# Config
-
-MODEL_ID = "google/gemma-3-12b"
-LMSTUDIO_URL = "http://localhost:1234/v1/completions"
-NUM_EMAILS = 300  # number of emails to process per run
-CREATE_NEW_FOLDERS = True  # If False, do not create new folders, always sort into Postvak In/Unsorted
-SOURCE_FOLDER_PATH = "Postvak IN"  # Change this to the folder path you want to grab emails from
-LOG_FILE_PATH = "C:\\Users\\michi\\OneDrive\\Bureaublad\\llm python test project\\mail_sorting_log.txt"  # Change this to set log file location
+from Secrets import MODEL_ID, LMSTUDIO_URL, NUM_EMAILS, CREATE_NEW_FOLDERS, SOURCE_FOLDER_PATH, LOG_FILE_PATH, PERSONAL_DETAILS, EXAMPLE_PROMPT
 
 # Cache of known folders (normalized -> real path)
 known_folders = {}
@@ -30,64 +22,18 @@ def classify_email(subject: str, body: str, sender_name: str, sender_email: str,
     attachments_info = ", ".join(attachments) if attachments else "None"
     # List existing folders for the LLM
     existing_folders_list = "\n".join(sorted(set(known_folders.values())))
-    prompt = f"""
-Je bent een e-mail sorteerassistent. Je helpt Michiel van Soest e-mails in Outlook correct te organiseren. Michiel van Soest woont op 2394VS, te Hazerswoude-Rijndijk op de bosboom Toussaintstraat 7.
-
-Hier is een lijst van bestaande folders:
-{existing_folders_list}
-
-Geef altijd het volledige pad van de folder terug, bijvoorbeeld: Postvak In/Personal. Als de folder niet bestaat, wordt deze aangemaakt.
-
-E-mail classificatie regels:
-
-- Postvak In/Orders/Invoices (facturen en betalingsbewijzen)
-- Postvak In/Orders/Shipping (verzendbevestigingen en leveringen)
-- Postvak In/Orders/Returns (retouraanvragen, klachten of wijziging van bestellingen)
-- Postvak In/Orders/Reviews (verzoeken om een winkel of product te beoordelen)
-- Postvak In/Work (alleen interne werkgerelateerde e-mails van Akkodis, Modis, Heko. Dit is een persoonlijke inbox, kijk hiervoor dus vooral naar de afzender email adres)
-- Postvak In/Personal (persoonlijke e-mails, gerelateerd aan familie, vrienden of reserveringen op mijn naam. Wees hier streng in, kijk vooral naar de afzender)
-- Postvak In/Personal/Important (persoonlijke e-mails, gerelateerd aan de overheid, DigiD, belastingdienst, zorgverzekeraar, verzekeringen; niet gaande over betalingen, maar over wijzigingen die mij aangaan)
-- Postvak In/Newsletters (nieuwsbrieven)
-- Postvak In/Verification (inlogverzoeken, verificatiecodes, login links)
-- Postvak In/Unsorted (onbekende of onduidelijke e-mails)
-- Als een nieuwe folder logisch is, stel die voor
-
-Belangrijke aanwijzingen:
-
-1. **Ordergerelateerd**: 
-   - Als onderwerp, afzender of inhoud woorden bevat zoals "bestelling", "order", "retour", "track & trace", "levering", "factuur", "productnummer", dan moet dit als een ordergerelateerde e-mail worden beschouwd en worden gesorteerd naar Postvak In/Orders of een relevante subfolder.
-   - Klantenservice e-mails van webshops of support-afzenders zijn altijd ordergerelateerd, niet Work.
-
-2. **Work**: Alleen interne werkgerelateerde e-mails van Akkodis, Modis, Heko. Klantenservice, bestellingen, klachten of retouraanvragen vallen NIET onder Work.
-
-3. **Verificatie**: Inlog- of verificatiecodes, links om wachtwoorden te resetten of accounts te verifiëren.
-
-4. **Reviews**: E-mails waarin expliciet gevraagd wordt een product of winkel te beoordelen.
-
-5. **Hints voor folders**:
-   - Afzender domein kan helpen bepalen de folder.
-   - Bijlagen namen en types kunnen hints geven (bijv. .pdf factuur).
-   - Keywords in onderwerp of inhoud zoals "factuur", "order", "contract", "levering", "retour", "review", "inloggen", "verificatie" zijn belangrijk.
-
-Voorbeelden:
-- Onderwerp: Inloggen in de Zonneplan app → Folder: Postvak In/Verification
-- Onderwerp: Klik hier om in te loggen → Folder: Postvak In/Verification
-- Onderwerp: Uw apotheek is benieuwd naar uw ervaring → Folder: Postvak In/Orders/Reviews
-- Onderwerp: Beoordeel uw aankoop bij Bol.com → Folder: Postvak In/Orders/Reviews
-- Onderwerp: Retouraanvraag voor bestelling ME060925000779 → Folder: Postvak In/Orders/Returns
-- Onderwerp: Factuur van uw bestelling bij Bol.com → Folder: Postvak In/Orders/Invoices
-
-E-mail details:
-Onderwerp: {subject}
-Afzender: {sender_name} <{sender_email}>
-Aan: {to}
-CC: {cc}
-Bijlagen: {attachments_info}
-Inhoud: {body[:1000]}
-
-Folder:
-Geef alleen het folderpad terug, zonder extra uitleg.
-"""
+    prompt = (
+        f"Je bent een e-mail sorteerassistent. {PERSONAL_DETAILS}\n"
+        f"{EXAMPLE_PROMPT.format(existing_folders_list=existing_folders_list)}"
+        f"\nE-mail details:\n"
+        f"Onderwerp: {subject}\n"
+        f"Afzender: {sender_name} <{sender_email}>\n"
+        f"Aan: {to}\n"
+        f"CC: {cc}\n"
+        f"Bijlagen: {attachments_info}\n"
+        f"Inhoud: {body[:1000]}\n"
+        f"\nFolder:\nGeef alleen het folderpad terug, zonder extra uitleg.\n"
+    )
 
     data = {
         "model": MODEL_ID,
@@ -161,8 +107,8 @@ def main():
             print(f"[SKIP] Message without valid ReceivedTime: {getattr(msg, 'Subject', 'No Subject')}")
             skipped += 1
             log_file.write(f"SKIPPED: '{getattr(msg, 'Subject', 'No Subject')}' -> No ReceivedTime\n")
-    print(f"Found {len(messages)} mail(s) in folder '{SOURCE_FOLDER_PATH}' (skipped {skipped} without ReceivedTime)")
-    log_file.write(f"SUMMARY: Found {len(messages)} mail(s) in folder '{SOURCE_FOLDER_PATH}' (skipped {skipped} without ReceivedTime)\n")
+    print(f"Found {len(messages)} mail(s) in folder '{SOURCE_FOLDER_PATH}' (skipped {skipped} zonder ReceivedTime)")
+    log_file.write(f"SUMMARY: Found {len(messages)} mail(s) in folder '{SOURCE_FOLDER_PATH}' (skipped {skipped} zonder ReceivedTime)\n")
     messages.sort(key=lambda x: x.ReceivedTime, reverse=True)
     messages = messages[:NUM_EMAILS]
 
