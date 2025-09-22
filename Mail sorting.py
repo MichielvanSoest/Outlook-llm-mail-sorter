@@ -13,6 +13,7 @@ import unicodedata
 import requests
 from tqdm import tqdm
 import win32com.client
+from typing import Optional
 
 from Secrets import (
     MODEL_ID, LMSTUDIO_URL, NUM_EMAILS, CREATE_NEW_FOLDERS,
@@ -77,15 +78,38 @@ def get_or_create_folder(root_folder, folder_path: str):
     print(f"Final target folder: {real_path}")
     return folder
 
+def extract_useful_metadata(raw_metadata):
+    useful = []
+    if "attachment_names" in raw_metadata:
+        useful.append(f"Bijlagen: {', '.join(raw_metadata['attachment_names'])}")
+    if "from_domain" in raw_metadata:
+        useful.append(f"Domein afzender: {raw_metadata['from_domain']}")
+    if "labels" in raw_metadata:
+        useful.append(f"Labels: {', '.join(raw_metadata['labels'])}")
+    return "\n".join(useful)
 
 # ---------- Classification ----------
  # If the model fails or is lazy, fallback to Unsorted, but only if creating folders is not allowed to suggest better names
 
 def classify_email(subject: str, body: str, sender_name: str,
-                   sender_email: str, to: str, cc: str, attachments: list) -> str:
-    # Turn mail details into a prompt for the LLM
+                   sender_email: str, to: str, cc: str, attachments: list,
+                   received_date: Optional[str] = None) -> str:
+    """
+    Classify an email into the correct folder using LLM.
+    """
+
     attachments_info = ", ".join(attachments) if attachments else "None"
     existing_folders_list = "\n".join(sorted(set(known_folders.values())))
+
+    # Optional metadata
+    metadata = []
+    if received_date:
+        metadata.append(f"Ontvangen datum: {received_date}")
+    metadata.append(f"Aantal bijlagen: {len(attachments)}")
+    if attachments:
+        metadata.append(f"Bijlagen namen/types: {attachments_info}")
+
+    metadata_info = "\n".join(metadata)
 
     prompt = (
         f"Je bent een e-mail sorteerassistent. {PERSONAL_DETAILS}\n"
@@ -95,7 +119,7 @@ def classify_email(subject: str, body: str, sender_name: str,
         f"Afzender: {sender_name} <{sender_email}>\n"
         f"Aan: {to}\n"
         f"CC: {cc}\n"
-        f"Bijlagen: {attachments_info}\n"
+        f"{extract_useful_metadata(metadata)}\n"
         f"Inhoud: {body[:1000]}\n"
         f"\nFolder:\nGeef alleen het folderpad terug, zonder extra uitleg.\n"
     )
@@ -112,6 +136,7 @@ def classify_email(subject: str, body: str, sender_name: str,
         return folder if folder else "Postvak In/Unsorted"
     else:
         raise RuntimeError(f"LLM API error {response.status_code}: {response.text}")
+
 
 
 # ---------- Mail handling ----------
@@ -163,8 +188,10 @@ def process_message(mail, source_folder, log_file):
     folder_path = classify_email(
         subject=subject, body=body,
         sender_name=sender_name, sender_email=sender_email,
-        to=to, cc=cc, attachments=attachments
+        to=to, cc=cc, attachments=attachments,
+        received_date=str(mail.ReceivedTime)  # YYYY-MM-DD will work fine
     )
+
     print(f" -> Suggested folder: {folder_path}")
 
     folder_path = clean_folder_path(folder_path)
